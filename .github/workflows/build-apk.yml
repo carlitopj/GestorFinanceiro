@@ -3,12 +3,11 @@ name: Build APK Debug
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # Permite rodar manualmente pelo GitHub
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
@@ -28,12 +27,9 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
-      - name: Criar pasta Android oculta
-        run: flutter create . --platforms=android --project-name=gestorfinanceiro
-
-      # ESTA LINHA ADICIONAL CONFIGURA O JAVA DENTRO DO GRADLE GERADO:
-      - name: Configurar Java no Gradle
-        run: echo "org.gradle.java.home=$JAVA_HOME" >> android/gradle.properties
+      - name: Criar google-services.json
+        run: |
+          echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
 
       - name: Build APK Debug
         run: flutter build apk --debug
@@ -44,4 +40,3 @@ jobs:
           name: gestor-financeiro-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 30
-          
