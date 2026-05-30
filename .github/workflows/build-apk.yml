@@ -30,7 +30,7 @@ jobs:
 
       # ESTA É A ETAPA NOVA QUE ADICIONAMOS:
       - name: Criar pasta Android oculta
-        run: flutter create . --platforms=android
+        run: flutter create . --platforms=android --project-name=gestorfinanceiro
 
       - name: Build APK Debug
         run: flutter build apk --debug
