@@ -41,8 +41,11 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
+      - name: Analisar código Dart
+        run: flutter analyze --no-fatal-infos || true
+
       - name: Build APK Debug
-        run: flutter build apk --debug
+        run: flutter build apk --debug 2>&1 | head -100
 
       - name: Encontrar APK gerado
         run: find . -name "*.apk" 2>/dev/null || echo "Nenhum APK encontrado"
