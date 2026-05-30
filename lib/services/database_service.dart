@@ -2,10 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../models/transacao.dart';
-import 'drive_service.dart';
 
-/// SQLite local — o arquivo é o mesmo gestorfinanceiro.db
-/// que o DriveService faz upload/download.
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
@@ -18,26 +15,15 @@ class DatabaseService {
   ];
   static const List<String> usuariosPadrao = ['Lidiane', 'Junior'];
 
-  // ─────────────────────────────────────────────
-  //  INICIALIZAÇÃO
-  // ─────────────────────────────────────────────
-
   Future<Database> get db async {
     _db ??= await _abrir();
     return _db!;
   }
 
-  Future<String> get _caminho async {
-    final dir = await getApplicationDocumentsDirectory();
-    return p.join(dir.path, 'gestorfinanceiro.db');
-  }
-
   Future<Database> _abrir() async {
-    return openDatabase(
-      await _caminho,
-      version: 1,
-      onCreate: _criar,
-    );
+    final dir = await getApplicationDocumentsDirectory();
+    final caminho = p.join(dir.path, 'gestorfinanceiro.db');
+    return openDatabase(caminho, version: 1, onCreate: _criar);
   }
 
   Future<void> _criar(Database db, int _) async {
@@ -54,7 +40,6 @@ class DatabaseService {
     ''');
     await db.execute('CREATE TABLE usuarios   (nome TEXT UNIQUE)');
     await db.execute('CREATE TABLE categorias (nome TEXT UNIQUE)');
-
     for (final u in usuariosPadrao) {
       await db.insert('usuarios', {'nome': u},
           conflictAlgorithm: ConflictAlgorithm.ignore);
@@ -65,26 +50,8 @@ class DatabaseService {
     }
   }
 
-  /// Fecha e reabre o banco (necessário após download do Drive)
-  Future<void> reabrir() async {
-    await _db?.close();
-    _db = null;
-    _db = await _abrir();
-  }
-
-  // ─────────────────────────────────────────────
-  //  SYNC COM DRIVE
-  //  Chame após qualquer escrita para manter o Drive atualizado
-  // ─────────────────────────────────────────────
-
-  Future<void> _sync() => DriveService().upload();
-
-  // ─────────────────────────────────────────────
-  //  USUÁRIOS
-  // ─────────────────────────────────────────────
-
   Future<List<String>> buscarUsuarios() async {
-    final d   = await db;
+    final d = await db;
     final res = await d.query('usuarios');
     return res.map((r) => r['nome'] as String).toList();
   }
@@ -94,7 +61,6 @@ class DatabaseService {
       final d = await db;
       await d.insert('usuarios', {'nome': nome},
           conflictAlgorithm: ConflictAlgorithm.ignore);
-      await _sync();
       return true;
     } catch (_) { return false; }
   }
@@ -104,17 +70,12 @@ class DatabaseService {
       final d = await db;
       await d.delete('usuarios',   where: 'nome=?',    whereArgs: [nome]);
       await d.delete('transacoes', where: 'usuario=?', whereArgs: [nome]);
-      await _sync();
       return true;
     } catch (_) { return false; }
   }
 
-  // ─────────────────────────────────────────────
-  //  CATEGORIAS
-  // ─────────────────────────────────────────────
-
   Future<List<String>> buscarCategorias() async {
-    final d   = await db;
+    final d = await db;
     final res = await d.query('categorias', orderBy: 'nome ASC');
     return res.map((r) => r['nome'] as String).toList();
   }
@@ -124,7 +85,6 @@ class DatabaseService {
       final d = await db;
       await d.insert('categorias', {'nome': nome},
           conflictAlgorithm: ConflictAlgorithm.ignore);
-      await _sync();
       return true;
     } catch (_) { return false; }
   }
@@ -133,24 +93,19 @@ class DatabaseService {
     try {
       final d = await db;
       await d.delete('categorias', where: 'nome=?', whereArgs: [nome]);
-      await _sync();
       return true;
     } catch (_) { return false; }
   }
 
-  // ─────────────────────────────────────────────
-  //  TRANSAÇÕES
-  // ─────────────────────────────────────────────
-
   Future<List<Transacao>> buscarPorMes(String usuario, String mesRef) async {
-    final d   = await db;
+    final d = await db;
     final res = await d.query('transacoes',
         where: 'usuario=? AND mes_ref=?', whereArgs: [usuario, mesRef]);
     return res.map(Transacao.fromMap).toList();
   }
 
   Future<List<Transacao>> buscarTodas(String usuario) async {
-    final d   = await db;
+    final d = await db;
     final res = await d.query('transacoes',
         where: 'usuario=?', whereArgs: [usuario], orderBy: 'id ASC');
     return res.map(Transacao.fromMap).toList();
@@ -158,7 +113,7 @@ class DatabaseService {
 
   Future<Transacao?> buscarPorDescricaoEMes(
       String usuario, String desc, String mesRef) async {
-    final d   = await db;
+    final d = await db;
     final res = await d.query('transacoes',
         where: 'usuario=? AND descricao=? AND mes_ref=?',
         whereArgs: [usuario, desc, mesRef]);
@@ -168,25 +123,18 @@ class DatabaseService {
   Future<void> salvar(Transacao t) async {
     final d = await db;
     await d.insert('transacoes', t.toMap());
-    await _sync();
   }
 
   Future<void> atualizar(Transacao t) async {
     final d = await db;
     await d.update('transacoes', t.toMap(),
         where: 'id=?', whereArgs: [t.id]);
-    await _sync();
   }
 
   Future<void> deletar(int id) async {
     final d = await db;
     await d.delete('transacoes', where: 'id=?', whereArgs: [id]);
-    await _sync();
   }
-
-  // ─────────────────────────────────────────────
-  //  SALDO
-  // ─────────────────────────────────────────────
 
   Map<String, double> calcularSaldo(List<Transacao> lista) {
     double rec = 0, desp = 0;
