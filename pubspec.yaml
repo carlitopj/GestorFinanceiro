@@ -1,4 +1,4 @@
-name: gestor_financeiro
+name: gestorfinanceiro
 description: Gestor Financeiro Mensal com SQLite
 
 publish_to: 'none'
