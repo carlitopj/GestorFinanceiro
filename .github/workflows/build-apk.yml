@@ -27,7 +27,11 @@ jobs:
 
       - name: Instalar dependências
         run: flutter pub get
-
+        
+      - name: criar pasta oculta android 
+        run: flutter create .
+      --plataforms=android
+      
       - name: Build APK Debug
         run: flutter build apk --debug
 
