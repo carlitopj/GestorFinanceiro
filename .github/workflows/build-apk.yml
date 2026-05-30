@@ -24,11 +24,21 @@ jobs:
           flutter-version: '3.22.0'
           channel: 'stable'
 
-      - name: Instalar dependências
-        run: flutter pub get
+      - name: Salvar arquivos lib e pubspec
+        run: |
+          cp -r lib /tmp/lib_backup
+          cp pubspec.yaml /tmp/pubspec_backup.yaml
 
       - name: Criar estrutura Android
         run: flutter create --platforms=android --project-name gestorfinanceiro .
+
+      - name: Restaurar arquivos do projeto
+        run: |
+          cp -r /tmp/lib_backup/* lib/
+          cp /tmp/pubspec_backup.yaml pubspec.yaml
+
+      - name: Instalar dependências
+        run: flutter pub get
 
       - name: Build APK Debug
         run: flutter build apk --debug
