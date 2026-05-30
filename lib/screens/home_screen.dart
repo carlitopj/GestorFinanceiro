@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../models/transacao.dart';
-import '../services/auth_service.dart';
-import '../services/drive_service.dart';
 import '../services/database_service.dart';
-import 'login_screen.dart';
 import 'extrato_screen.dart';
 import 'graficos_screen.dart';
 
@@ -29,7 +25,6 @@ class _HomeScreenState extends State<HomeScreen> {
   double _receitas = 0, _despesas = 0, _saldo = 0;
   bool _carregando = true;
   bool _salvando   = false;
-  bool _sincronizando = false;
 
   final _descCtrl  = TextEditingController();
   final _valorCtrl = TextEditingController();
@@ -72,20 +67,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _despesas = s['despesas']!;
       _saldo    = s['saldo']!;
     });
-  }
-
-  // Sincroniza manualmente: baixa o .db mais recente do Drive
-  Future<void> _sincronizar() async {
-    setState(() => _sincronizando = true);
-    final ok = await DriveService().download();
-    if (ok) {
-      await _db.reabrir();
-      await _inicializar();
-      _snack('Dados sincronizados do Drive!');
-    } else {
-      _snack('Nenhum dado novo no Drive.', erro: true);
-    }
-    setState(() => _sincronizando = false);
   }
 
   Future<void> _verificarExistente(String desc) async {
@@ -137,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() => _salvando = false);
     await _carregarSaldo();
-    _snack('Lançamento salvo e enviado ao Drive!');
+    _snack('Lançamento salvo!');
   }
 
   void _preencherEdicao(Transacao t) {
@@ -159,68 +140,6 @@ class _HomeScreenState extends State<HomeScreen> {
     ));
   }
 
-  // ── Dialogs ──────────────────────────────────────────────────
-
-  void _dialogCompartilhar() {
-    final emailCtrl = TextEditingController();
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Compartilhar'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(
-          'O arquivo gestorfinanceiro.db está salvo na pasta '
-          '"GestorFinanceiro" no seu Google Drive.\n\n'
-          'Compartilhe com alguém pelo e-mail abaixo, ou copie '
-          'o link da pasta.',
-          style: GoogleFonts.poppins(fontSize: 13),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: emailCtrl,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            labelText: 'E-mail para compartilhar',
-            border: OutlineInputBorder(),
-          ),
-        ),
-      ]),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Fechar'),
-        ),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.copy, size: 16),
-          label: const Text('Copiar link'),
-          style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.grey[700]),
-          onPressed: () {
-            Clipboard.setData(
-                ClipboardData(text: DriveService().linkPasta));
-            Navigator.pop(ctx);
-            _snack('Link copiado!');
-          },
-        ),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.share, size: 16),
-          label: const Text('Compartilhar'),
-          onPressed: () async {
-            final email = emailCtrl.text.trim();
-            if (email.isEmpty) return;
-            Navigator.pop(ctx);
-            final ok =
-                await DriveService().compartilharCom(email);
-            _snack(
-              ok
-                  ? 'Pasta compartilhada com $email!'
-                  : 'Erro ao compartilhar.',
-              erro: !ok,
-            );
-          },
-        ),
-      ],
-    ));
-  }
-
   void _dialogUsuario() {
     final ctrl = TextEditingController();
     showDialog(context: context, builder: (ctx) => AlertDialog(
@@ -231,21 +150,17 @@ class _HomeScreenState extends State<HomeScreen> {
             labelText: 'Nome', border: OutlineInputBorder()),
       ),
       actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(ctx),
+        TextButton(onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancelar')),
-        ElevatedButton(
-          onPressed: () async {
-            final nome = ctrl.text.trim();
-            if (nome.isEmpty) return;
-            await _db.adicionarUsuario(nome);
-            _usuarios = await _db.buscarUsuarios();
-            setState(() => _usuarioAtual = nome);
-            await _carregarSaldo();
-            if (ctx.mounted) Navigator.pop(ctx);
-          },
-          child: const Text('Adicionar'),
-        ),
+        ElevatedButton(onPressed: () async {
+          final nome = ctrl.text.trim();
+          if (nome.isEmpty) return;
+          await _db.adicionarUsuario(nome);
+          _usuarios = await _db.buscarUsuarios();
+          setState(() => _usuarioAtual = nome);
+          await _carregarSaldo();
+          if (ctx.mounted) Navigator.pop(ctx);
+        }, child: const Text('Adicionar')),
       ],
     ));
   }
@@ -260,27 +175,21 @@ class _HomeScreenState extends State<HomeScreen> {
             labelText: 'Nome', border: OutlineInputBorder()),
       ),
       actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(ctx),
+        TextButton(onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancelar')),
-        ElevatedButton(
-          onPressed: () async {
-            final nome = ctrl.text.trim();
-            if (nome.isEmpty) return;
-            final fmt =
-                nome[0].toUpperCase() + nome.substring(1).toLowerCase();
-            await _db.adicionarCategoria(fmt);
-            _categorias = await _db.buscarCategorias();
-            setState(() => _catSel = fmt);
-            if (ctx.mounted) Navigator.pop(ctx);
-          },
-          child: const Text('Adicionar'),
-        ),
+        ElevatedButton(onPressed: () async {
+          final nome = ctrl.text.trim();
+          if (nome.isEmpty) return;
+          final fmt =
+              nome[0].toUpperCase() + nome.substring(1).toLowerCase();
+          await _db.adicionarCategoria(fmt);
+          _categorias = await _db.buscarCategorias();
+          setState(() => _catSel = fmt);
+          if (ctx.mounted) Navigator.pop(ctx);
+        }, child: const Text('Adicionar')),
       ],
     ));
   }
-
-  // ── Build ─────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -289,31 +198,12 @@ class _HomeScreenState extends State<HomeScreen> {
       title: Text('Gestor Financeiro',
           style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
       actions: [
-        // Sincronizar manualmente
-        _sincronizando
-            ? const Padding(
-                padding: EdgeInsets.all(14),
-                child: SizedBox(
-                  width: 20, height: 20,
-                  child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2),
-                ))
-            : IconButton(
-                icon: const Icon(Icons.cloud_sync),
-                tooltip: 'Sincronizar com Drive',
-                onPressed: _sincronizar,
-              ),
         IconButton(
           icon: const Icon(Icons.bar_chart),
           tooltip: 'Gráficos',
           onPressed: () => Navigator.push(context,
               MaterialPageRoute(builder: (_) => GraficosScreen(
                   usuario: _usuarioAtual, mesRef: _mesRef))),
-        ),
-        IconButton(
-          icon: const Icon(Icons.share),
-          tooltip: 'Compartilhar',
-          onPressed: _dialogCompartilhar,
         ),
         PopupMenuButton<String>(
           onSelected: (v) async {
@@ -350,13 +240,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 setState(() => _usuarioAtual = _usuarios.first);
                 await _carregarSaldo();
               }
-            } else if (v == 'logout') {
-              await AuthService().signOut();
-              if (mounted) {
-                Navigator.pushReplacement(context,
-                    MaterialPageRoute(
-                        builder: (_) => const LoginScreen()));
-              }
             }
           },
           itemBuilder: (_) => const [
@@ -364,8 +247,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Text('+ Novo Usuário')),
             PopupMenuItem(value: 'delUser',
                 child: Text('− Excluir Usuário')),
-            PopupMenuDivider(),
-            PopupMenuItem(value: 'logout', child: Text('Sair')),
           ],
         ),
       ],
@@ -373,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
     body: _carregando
         ? const Center(child: CircularProgressIndicator())
         : RefreshIndicator(
-            onRefresh: _sincronizar,
+            onRefresh: _carregarSaldo,
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
@@ -399,29 +280,23 @@ class _HomeScreenState extends State<HomeScreen> {
         colors: _saldo >= 0
             ? [const Color(0xFF27AE60), const Color(0xFF2ECC71)]
             : [const Color(0xFFE74C3C), const Color(0xFFC0392B)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
       ),
       borderRadius: BorderRadius.circular(20),
-      boxShadow: const [
-        BoxShadow(
-            color: Colors.black26, blurRadius: 12, offset: Offset(0, 4))
-      ],
+      boxShadow: const [BoxShadow(
+          color: Colors.black26, blurRadius: 12, offset: Offset(0, 4))],
     ),
     child: Column(children: [
       Text('${_meses[_mesAtual - 1]} $_ano',
-          style: GoogleFonts.poppins(
-              color: Colors.white70, fontSize: 14)),
+          style: GoogleFonts.poppins(color: Colors.white70, fontSize: 14)),
       const SizedBox(height: 4),
       Text(_fmt.format(_saldo),
           style: GoogleFonts.poppins(
-              color: Colors.white,
-              fontSize: 34,
+              color: Colors.white, fontSize: 34,
               fontWeight: FontWeight.bold)),
       const SizedBox(height: 4),
       Text('Saldo do mês',
-          style: GoogleFonts.poppins(
-              color: Colors.white60, fontSize: 12)),
+          style: GoogleFonts.poppins(color: Colors.white60, fontSize: 12)),
       const SizedBox(height: 16),
       Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
         _miniCard('Receitas', _receitas),
@@ -431,21 +306,16 @@ class _HomeScreenState extends State<HomeScreen> {
   );
 
   Widget _miniCard(String label, double valor) => Container(
-    padding:
-        const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
     decoration: BoxDecoration(
       color: Colors.white.withOpacity(0.15),
       borderRadius: BorderRadius.circular(12),
     ),
     child: Column(children: [
-      Text(label,
-          style: GoogleFonts.poppins(
-              color: Colors.white70, fontSize: 12)),
-      Text(_fmt.format(valor),
-          style: GoogleFonts.poppins(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 15)),
+      Text(label, style: GoogleFonts.poppins(
+          color: Colors.white70, fontSize: 12)),
+      Text(_fmt.format(valor), style: GoogleFonts.poppins(
+          color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
     ]),
   );
 
@@ -453,9 +323,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Expanded(child: DropdownButtonFormField<String>(
       value: _usuarioAtual.isEmpty ? null : _usuarioAtual,
       decoration: _decor('Usuário'),
-      items: _usuarios
-          .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-          .toList(),
+      items: _usuarios.map((u) =>
+          DropdownMenuItem(value: u, child: Text(u))).toList(),
       onChanged: (v) async {
         if (v != null) {
           setState(() => _usuarioAtual = v);
@@ -479,18 +348,14 @@ class _HomeScreenState extends State<HomeScreen> {
   ]);
 
   Widget _formLancamento() => Card(
-    shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16)),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     elevation: 2,
     child: Padding(
       padding: const EdgeInsets.all(16),
       child: Column(children: [
         Text(
-          _idEdicao != null
-              ? 'Editando Lançamento'
-              : 'Novo Lançamento',
-          style: GoogleFonts.poppins(
-              fontWeight: FontWeight.bold, fontSize: 16),
+          _idEdicao != null ? 'Editando Lançamento' : 'Novo Lançamento',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -501,39 +366,31 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 10),
         TextField(
           controller: _valorCtrl,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: _decor('Valor (R\$ 0,00)'),
         ),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: DropdownButtonFormField<String>(
-            value:
-                _categorias.contains(_catSel) ? _catSel : null,
+            value: _categorias.contains(_catSel) ? _catSel : null,
             decoration: _decor('Categoria'),
-            items: _categorias
-                .map((c) =>
-                    DropdownMenuItem(value: c, child: Text(c)))
-                .toList(),
+            items: _categorias.map((c) =>
+                DropdownMenuItem(value: c, child: Text(c))).toList(),
             onChanged: (v) {
               if (v != null) setState(() => _catSel = v);
             },
           )),
           IconButton(
-            icon: const Icon(Icons.add_circle,
-                color: Color(0xFF2980B9)),
+            icon: const Icon(Icons.add_circle, color: Color(0xFF2980B9)),
             onPressed: _dialogCategoria,
             tooltip: 'Nova categoria',
           ),
           IconButton(
-            icon: const Icon(Icons.remove_circle,
-                color: Color(0xFFE74C3C)),
+            icon: const Icon(Icons.remove_circle, color: Color(0xFFE74C3C)),
             tooltip: 'Excluir categoria',
             onPressed: () async {
               if (['Outros', 'Alimentação'].contains(_catSel)) {
-                _snack(
-                    'Esta categoria não pode ser excluída.',
-                    erro: true);
+                _snack('Esta categoria não pode ser excluída.', erro: true);
                 return;
               }
               await _db.excluirCategoria(_catSel);
@@ -546,10 +403,8 @@ class _HomeScreenState extends State<HomeScreen> {
         DropdownButtonFormField<String>(
           value: _tipoSel,
           decoration: _decor('Tipo'),
-          items: ['Despesa', 'Receita']
-              .map((t) =>
-                  DropdownMenuItem(value: t, child: Text(t)))
-              .toList(),
+          items: ['Despesa', 'Receita'].map((t) =>
+              DropdownMenuItem(value: t, child: Text(t))).toList(),
           onChanged: (v) {
             if (v != null) setState(() => _tipoSel = v);
           },
@@ -560,14 +415,12 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ElevatedButton.icon(
             onPressed: _salvando ? null : _salvar,
             icon: _salvando
-                ? const SizedBox(
-                    width: 18, height: 18,
+                ? const SizedBox(width: 18, height: 18,
                     child: CircularProgressIndicator(
                         color: Colors.white, strokeWidth: 2))
                 : const Icon(Icons.save),
             label: Text(_idEdicao != null
-                ? 'Atualizar Lançamento'
-                : 'Salvar Lançamento'),
+                ? 'Atualizar Lançamento' : 'Salvar Lançamento'),
           ),
         ),
         if (_idEdicao != null)
@@ -589,21 +442,27 @@ class _HomeScreenState extends State<HomeScreen> {
     width: double.infinity,
     child: OutlinedButton.icon(
       icon: const Icon(Icons.list_alt),
-      label: Text(
-        'Ver Extrato de ${_meses[_mesAtual - 1]}',
-        style:
-            GoogleFonts.poppins(fontWeight: FontWeight.w600),
-      ),
+      label: Text('Ver Extrato de ${_meses[_mesAtual - 1]}',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 14),
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12)),
       ),
-      onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ExtratoScreen(
-              usuario: _usuarioAtual,
-              mesRef: _mesRef,
-              onEditar: _preencherEdicao,
-             
+      onPressed: () => Navigator.push(context, MaterialPageRoute(
+        builder: (_) => ExtratoScreen(
+          usuario: _usuarioAtual,
+          mesRef: _mesRef,
+          onEditar: _preencherEdicao,
+          onAtualizar: _carregarSaldo,
+        ),
+      )),
+    ),
+  );
+
+  InputDecoration _decor(String label) => InputDecoration(
+    labelText: label,
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+  );
+}
