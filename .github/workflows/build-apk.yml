@@ -27,11 +27,11 @@ jobs:
 
       - name: Instalar dependências
         run: flutter pub get
-        
-      - name: criar pasta oculta android 
-        run: flutter create .
-      --plataforms=android
-      
+
+      # ESTA É A ETAPA NOVA QUE ADICIONAMOS:
+      - name: Criar pasta Android oculta
+        run: flutter create . --platforms=android
+
       - name: Build APK Debug
         run: flutter build apk --debug
 
@@ -41,3 +41,4 @@ jobs:
           name: gestor-financeiro-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 30
+          
