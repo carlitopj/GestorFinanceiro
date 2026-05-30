@@ -27,9 +27,8 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
-      - name: Criar google-services.json
-        run: |
-          echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
+      - name: Criar estrutura Android
+        run: flutter create --platforms=android .
 
       - name: Build APK Debug
         run: flutter build apk --debug
