@@ -28,7 +28,7 @@ jobs:
         run: flutter pub get
 
       - name: Criar estrutura Android
-        run: flutter create --platforms=android .
+        run: flutter create --platforms=android --project-name gestorfinanceiro .
 
       - name: Build APK Debug
         run: flutter build apk --debug
