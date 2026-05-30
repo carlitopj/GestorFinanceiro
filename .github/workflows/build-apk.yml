@@ -45,10 +45,14 @@ jobs:
         run: flutter analyze --no-fatal-infos || true
 
       - name: Build APK Debug
-        run: flutter build apk --debug 2>&1 | head -100
+        run: flutter build apk --debug
 
       - name: Encontrar APK gerado
-        run: find . -name "*.apk" 2>/dev/null || echo "Nenhum APK encontrado"
+        run: |
+          echo "=== Buscando APKs ==="
+          find / -name "*.apk" 2>/dev/null || echo "Nenhum APK encontrado"
+          echo "=== Conteudo build ==="
+          ls -la build/ 2>/dev/null || echo "Pasta build nao existe"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
