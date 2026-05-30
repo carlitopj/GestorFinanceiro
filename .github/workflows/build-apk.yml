@@ -52,6 +52,9 @@ jobs:
           cd android
           ./gradlew assembleDebug --info --stacktrace 2>&1 | tail -200
 
+      - name: Encontrar APK gerado
+        run: find . -name "*.apk" 2>/dev/null
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
