@@ -41,25 +41,16 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
-      - name: Mostrar versões para diagnóstico
-        run: |
-          flutter --version
-          java -version
-          cat android/app/build.gradle
-
       - name: Build APK Debug
-        run: |
-          cd android
-          ./gradlew assembleDebug --info --stacktrace 2>&1 | tail -200
+        run: flutter build apk --debug
 
       - name: Encontrar APK gerado
-        run: find . -name "*.apk" 2>/dev/null
+        run: find . -name "*.apk" 2>/dev/null || echo "Nenhum APK encontrado"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: gestor-financeiro-apk
-          path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            build/app/outputs/flutter-apk/app-debug.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 30
+          if-no-files-found: warn
