@@ -24,7 +24,7 @@ jobs:
           flutter-version: '3.22.0'
           channel: 'stable'
 
-      - name: Salvar arquivos lib e pubspec
+      - name: Salvar lib e pubspec
         run: |
           cp -r lib /tmp/lib_backup
           cp pubspec.yaml /tmp/pubspec_backup.yaml
@@ -34,18 +34,27 @@ jobs:
 
       - name: Restaurar arquivos do projeto
         run: |
-          cp -r /tmp/lib_backup/* lib/
+          rm -rf lib
+          cp -r /tmp/lib_backup lib
           cp /tmp/pubspec_backup.yaml pubspec.yaml
 
       - name: Instalar dependências
         run: flutter pub get
 
+      - name: Mostrar versões para diagnóstico
+        run: |
+          flutter --version
+          java -version
+          cat android/app/build.gradle
+
       - name: Build APK Debug
-        run: flutter build apk --debug --verbose
+        run: |
+          cd android
+          ./gradlew assembleDebug --info --stacktrace 2>&1 | tail -200
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: gestor-financeiro-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
