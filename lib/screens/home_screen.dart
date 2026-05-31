@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../models/transacao.dart';
+import '../services/auth_service.dart';
+import '../services/drive_service.dart';
 import '../services/database_service.dart';
 import 'extrato_screen.dart';
 import 'graficos_screen.dart';
@@ -13,8 +16,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _db  = DatabaseService();
-  final _fmt = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final _db    = DatabaseService();
+  final _auth  = AuthService();
+  final _drive = DriveService();
+  final _fmt   = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
   List<String> _usuarios   = [];
   List<String> _categorias = [];
@@ -23,8 +28,9 @@ class _HomeScreenState extends State<HomeScreen> {
   final  _ano              = DateTime.now().year;
 
   double _receitas = 0, _despesas = 0, _saldo = 0;
-  bool _carregando = true;
-  bool _salvando   = false;
+  bool _carregando    = true;
+  bool _salvando      = false;
+  bool _sincronizando = false;
 
   final _descCtrl  = TextEditingController();
   final _valorCtrl = TextEditingController();
@@ -69,6 +75,36 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // ── Google Drive ─────────────────────────────────────────────
+
+  Future<void> _loginDrive() async {
+    setState(() => _sincronizando = true);
+    final user = await _auth.signIn();
+    if (user == null) {
+      _snack('Login cancelado.', erro: true);
+      setState(() => _sincronizando = false);
+      return;
+    }
+    _snack('Conectado como ${_auth.email}');
+    await _drive.inicializar();
+    await _sincronizar(silencioso: true);
+    setState(() => _sincronizando = false);
+  }
+
+  Future<void> _sincronizar({bool silencioso = false}) async {
+    if (!_auth.isSignedIn) { _loginDrive(); return; }
+    setState(() => _sincronizando = true);
+    final baixou = await _drive.download();
+    if (baixou) {
+      await _db.reabrir();
+      await _inicializar();
+      if (!silencioso) _snack('Dados sincronizados do Drive!');
+    } else {
+      if (!silencioso) _snack('Nenhum dado novo no Drive.');
+    }
+    setState(() => _sincronizando = false);
+  }
+
   Future<void> _verificarExistente(String desc) async {
     if (desc.length < 2) return;
     final t = await _db.buscarPorDescricaoEMes(
@@ -90,14 +126,11 @@ class _HomeScreenState extends State<HomeScreen> {
         .replaceAll('R\$', '').replaceAll(' ', '')
         .replaceAll('.', '').replaceAll(',', '.');
     final valor = double.tryParse(valorStr);
-
     if (desc.isEmpty || valor == null) {
       _snack('Preencha descrição e valor corretamente.', erro: true);
       return;
     }
-
     setState(() => _salvando = true);
-
     if (_idEdicao != null) {
       await _db.atualizar(Transacao(
         id: _idEdicao, usuario: _usuarioAtual,
@@ -110,24 +143,22 @@ class _HomeScreenState extends State<HomeScreen> {
         tipo: _tipoSel, categoria: _catSel, mesRef: _mesRef,
       ));
     }
-
     _descCtrl.clear(); _valorCtrl.clear();
-    _idEdicao = null;  _tipoSel  = 'Despesa';
+    _idEdicao = null;  _tipoSel = 'Despesa';
     _catSel = _categorias.contains('Outros')
         ? 'Outros' : _categorias.first;
-
     setState(() => _salvando = false);
     await _carregarSaldo();
-    _snack('Lançamento salvo!');
+    _snack(_auth.isSignedIn
+        ? 'Salvo e enviado ao Drive!'
+        : 'Lançamento salvo!');
   }
 
   void _preencherEdicao(Transacao t) {
     _descCtrl.text  = t.descricao;
     _valorCtrl.text = t.valor.toStringAsFixed(2).replaceAll('.', ',');
     setState(() {
-      _idEdicao = t.id;
-      _tipoSel  = t.tipo;
-      _catSel   = t.categoria;
+      _idEdicao = t.id; _tipoSel = t.tipo; _catSel = t.categoria;
     });
     _snack('Editando: ${t.descricao}');
   }
@@ -140,15 +171,83 @@ class _HomeScreenState extends State<HomeScreen> {
     ));
   }
 
+  // ── Dialogs ──────────────────────────────────────────────────
+
+  void _dialogDrive() {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: Row(children: [
+        const Icon(Icons.cloud, color: Color(0xFF2C3E50)),
+        const SizedBox(width: 8),
+        const Text('Google Drive'),
+      ]),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (_auth.isSignedIn) ...[
+          const Icon(Icons.check_circle, color: Colors.green, size: 48),
+          const SizedBox(height: 8),
+          Text('Conectado como:\n${_auth.email}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13)),
+          const SizedBox(height: 12),
+          Text('Arquivo: carteira.db\nPasta: GestorFinanceiro',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () {
+              Clipboard.setData(
+                  ClipboardData(text: _drive.linkPasta));
+              Navigator.pop(ctx);
+              _snack('Link copiado!');
+            },
+            child: const Text('📋 Copiar link da pasta',
+                style: TextStyle(color: Colors.blue, fontSize: 13)),
+          ),
+        ] else ...[
+          const Icon(Icons.cloud_off, color: Colors.grey, size: 48),
+          const SizedBox(height: 8),
+          const Text(
+            'Conecte ao Google Drive para sincronizar '
+            'o carteira.db automaticamente.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13),
+          ),
+        ],
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx),
+            child: const Text('Fechar')),
+        if (_auth.isSignedIn) ...[
+          ElevatedButton.icon(
+            icon: const Icon(Icons.cloud_download, size: 16),
+            label: const Text('Sincronizar'),
+            onPressed: () { Navigator.pop(ctx); _sincronizar(); },
+          ),
+          TextButton(
+            onPressed: () async {
+              await _auth.signOut();
+              Navigator.pop(ctx);
+              setState(() {});
+              _snack('Desconectado do Drive.');
+            },
+            child: const Text('Sair', style: TextStyle(color: Colors.red)),
+          ),
+        ] else
+          ElevatedButton.icon(
+            icon: const Icon(Icons.login, size: 16),
+            label: const Text('Entrar com Google'),
+            onPressed: () { Navigator.pop(ctx); _loginDrive(); },
+          ),
+      ],
+    ));
+  }
+
   void _dialogUsuario() {
     final ctrl = TextEditingController();
     showDialog(context: context, builder: (ctx) => AlertDialog(
       title: const Text('Novo Usuário'),
-      content: TextField(
-        controller: ctrl,
-        decoration: const InputDecoration(
-            labelText: 'Nome', border: OutlineInputBorder()),
-      ),
+      content: TextField(controller: ctrl,
+          decoration: const InputDecoration(
+              labelText: 'Nome', border: OutlineInputBorder())),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancelar')),
@@ -169,11 +268,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final ctrl = TextEditingController();
     showDialog(context: context, builder: (ctx) => AlertDialog(
       title: const Text('Nova Categoria'),
-      content: TextField(
-        controller: ctrl,
-        decoration: const InputDecoration(
-            labelText: 'Nome', border: OutlineInputBorder()),
-      ),
+      content: TextField(controller: ctrl,
+          decoration: const InputDecoration(
+              labelText: 'Nome', border: OutlineInputBorder())),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancelar')),
@@ -191,6 +288,8 @@ class _HomeScreenState extends State<HomeScreen> {
     ));
   }
 
+  // ── Build ─────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: const Color(0xFFF4F6F8),
@@ -198,6 +297,20 @@ class _HomeScreenState extends State<HomeScreen> {
       title: Text('Gestor Financeiro',
           style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
       actions: [
+        // Ícone Drive — verde se conectado, cinza se não
+        _sincronizando
+            ? const Padding(padding: EdgeInsets.all(14),
+                child: SizedBox(width: 20, height: 20,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2)))
+            : IconButton(
+                icon: Icon(Icons.cloud,
+                    color: _auth.isSignedIn
+                        ? Colors.greenAccent : Colors.white54),
+                tooltip: _auth.isSignedIn
+                    ? 'Drive conectado' : 'Conectar ao Drive',
+                onPressed: _dialogDrive,
+              ),
         IconButton(
           icon: const Icon(Icons.bar_chart),
           tooltip: 'Gráficos',
@@ -215,25 +328,23 @@ class _HomeScreenState extends State<HomeScreen> {
                     erro: true);
                 return;
               }
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Confirmar'),
-                  content: Text(
-                      'Excluir $_usuarioAtual e todos os seus lançamentos?'),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancelar')),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red),
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Excluir'),
-                    ),
-                  ],
-                ),
-              );
+              final ok = await showDialog<bool>(context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Confirmar'),
+                    content: Text(
+                        'Excluir $_usuarioAtual e todos os lançamentos?'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancelar')),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Excluir'),
+                      ),
+                    ],
+                  ));
               if (ok == true) {
                 await _db.excluirUsuario(_usuarioAtual);
                 _usuarios = await _db.buscarUsuarios();
@@ -243,10 +354,8 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           },
           itemBuilder: (_) => const [
-            PopupMenuItem(value: 'addUser',
-                child: Text('+ Novo Usuário')),
-            PopupMenuItem(value: 'delUser',
-                child: Text('− Excluir Usuário')),
+            PopupMenuItem(value: 'addUser', child: Text('+ Novo Usuário')),
+            PopupMenuItem(value: 'delUser', child: Text('− Excluir Usuário')),
           ],
         ),
       ],
@@ -254,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> {
     body: _carregando
         ? const Center(child: CircularProgressIndicator())
         : RefreshIndicator(
-            onRefresh: _carregarSaldo,
+            onRefresh: () => _sincronizar(),
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
@@ -291,9 +400,8 @@ class _HomeScreenState extends State<HomeScreen> {
           style: GoogleFonts.poppins(color: Colors.white70, fontSize: 14)),
       const SizedBox(height: 4),
       Text(_fmt.format(_saldo),
-          style: GoogleFonts.poppins(
-              color: Colors.white, fontSize: 34,
-              fontWeight: FontWeight.bold)),
+          style: GoogleFonts.poppins(color: Colors.white,
+              fontSize: 34, fontWeight: FontWeight.bold)),
       const SizedBox(height: 4),
       Text('Saldo do mês',
           style: GoogleFonts.poppins(color: Colors.white60, fontSize: 12)),
@@ -353,22 +461,18 @@ class _HomeScreenState extends State<HomeScreen> {
     child: Padding(
       padding: const EdgeInsets.all(16),
       child: Column(children: [
-        Text(
-          _idEdicao != null ? 'Editando Lançamento' : 'Novo Lançamento',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
+        Text(_idEdicao != null ? 'Editando Lançamento' : 'Novo Lançamento',
+            style: GoogleFonts.poppins(
+                fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 12),
-        TextField(
-          controller: _descCtrl,
-          decoration: _decor('Descrição do item'),
-          onChanged: _verificarExistente,
-        ),
+        TextField(controller: _descCtrl,
+            decoration: _decor('Descrição do item'),
+            onChanged: _verificarExistente),
         const SizedBox(height: 10),
-        TextField(
-          controller: _valorCtrl,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: _decor('Valor (R\$ 0,00)'),
-        ),
+        TextField(controller: _valorCtrl,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            decoration: _decor('Valor (R\$ 0,00)')),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: DropdownButtonFormField<String>(
@@ -382,9 +486,7 @@ class _HomeScreenState extends State<HomeScreen> {
           )),
           IconButton(
             icon: const Icon(Icons.add_circle, color: Color(0xFF2980B9)),
-            onPressed: _dialogCategoria,
-            tooltip: 'Nova categoria',
-          ),
+            onPressed: _dialogCategoria, tooltip: 'Nova categoria'),
           IconButton(
             icon: const Icon(Icons.remove_circle, color: Color(0xFFE74C3C)),
             tooltip: 'Excluir categoria',
@@ -396,8 +498,7 @@ class _HomeScreenState extends State<HomeScreen> {
               await _db.excluirCategoria(_catSel);
               _categorias = await _db.buscarCategorias();
               setState(() => _catSel = _categorias.first);
-            },
-          ),
+            }),
         ]),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
@@ -410,8 +511,7 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
         const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
+        SizedBox(width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: _salvando ? null : _salvar,
             icon: _salvando
@@ -427,8 +527,7 @@ class _HomeScreenState extends State<HomeScreen> {
           TextButton(
             onPressed: () => setState(() {
               _idEdicao = null;
-              _descCtrl.clear();
-              _valorCtrl.clear();
+              _descCtrl.clear(); _valorCtrl.clear();
               _tipoSel = 'Despesa';
             }),
             child: const Text('Cancelar edição',
@@ -451,10 +550,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       onPressed: () => Navigator.push(context, MaterialPageRoute(
         builder: (_) => ExtratoScreen(
-          usuario: _usuarioAtual,
-          mesRef: _mesRef,
-          onEditar: _preencherEdicao,
-          onAtualizar: _carregarSaldo,
+          usuario: _usuarioAtual, mesRef: _mesRef,
+          onEditar: _preencherEdicao, onAtualizar: _carregarSaldo,
         ),
       )),
     ),
@@ -463,6 +560,7 @@ class _HomeScreenState extends State<HomeScreen> {
   InputDecoration _decor(String label) => InputDecoration(
     labelText: label,
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    contentPadding:
+        const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
   );
 }
