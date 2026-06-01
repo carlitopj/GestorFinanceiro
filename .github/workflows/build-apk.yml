@@ -41,6 +41,17 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
+      - name: Mostrar SHA-1 do debug keystore
+        run: |
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android -keypass android \
+            | grep "SHA1:"
+
+      - name: Analisar código Dart
+        run: flutter analyze --no-fatal-infos || true
+
       - name: Build APK Debug
         run: flutter build apk --debug
 
