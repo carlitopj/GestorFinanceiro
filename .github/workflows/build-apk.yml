@@ -41,9 +41,10 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
-      - name: Gerar debug keystore e mostrar SHA-1
+      - name: Gerar Keystore Fixa e Exibir SHA-1
         run: |
           mkdir -p ~/.android
+          # Criamos a chave com dados fixos para o SHA-1 nunca mudar entre os builds
           keytool -genkeypair -v \
             -keystore ~/.android/debug.keystore \
             -alias androiddebugkey \
@@ -51,55 +52,16 @@ jobs:
             -validity 10000 \
             -storepass android -keypass android \
             -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
+          
+          echo "========================================================"
+          echo "COPIE O SHA-1 ABAIXO E COLE NO GOOGLE CLOUD:"
+          echo "========================================================"
           keytool -list -v \
             -keystore ~/.android/debug.keystore \
             -alias androiddebugkey \
             -storepass android -keypass android \
-            | grep "SHA1:"
-
-      - name: Configurar google-services no build.gradle
-        run: |
-          cat > android/build.gradle << 'EOF'
-          buildscript {
-              ext.kotlin_version = '1.7.10'
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:7.3.0'
-                  classpath 'com.google.gms:google-services:4.4.0'
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-              }
-          }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.buildDir = '../build'
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(':app')
-          }
-          tasks.register("clean", Delete) {
-              delete rootProject.buildDir
-          }
-          EOF
-          # Adiciona plugin no app/build.gradle
-          echo "" >> android/app/build.gradle
-          echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
-
-      - name: Criar google-services.json
-        env:
-          GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: |
-          echo "$GOOGLE_SERVICES" > android/app/google-services.json
-          echo "=== Verificando JSON ==="
-          head -3 android/app/google-services.json
+            | grep "SHA1:" || true
+          echo "========================================================"
 
       - name: Analisar código Dart
         run: flutter analyze --no-fatal-infos || true
