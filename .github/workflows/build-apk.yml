@@ -57,6 +57,17 @@ jobs:
             -storepass android -keypass android \
             | grep "SHA1:"
 
+      - name: Configurar google-services no build.gradle
+        run: |
+          # Adiciona classpath no build.gradle raiz
+          sed -i "s/dependencies {/dependencies {\n        classpath 'com.google.gms:google-services:4.4.0'/" android/build.gradle
+          # Adiciona plugin no app/build.gradle
+          echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
+
+      - name: Criar google-services.json
+        run: |
+          echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
+
       - name: Analisar código Dart
         run: flutter analyze --no-fatal-infos || true
 
