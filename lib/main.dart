@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'services/auth_service.dart';
 import 'services/drive_service.dart';
 import 'services/database_service.dart';
-<parameter name="content">import 'screens/home_screen.dart';
+import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,7 +62,6 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _iniciar() async {
-    // Tenta login silencioso (sessão anterior)
     final user = await AuthService().signInSilently();
     if (user != null) {
       _set('Conectando ao Google Drive...');
