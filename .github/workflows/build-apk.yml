@@ -41,8 +41,16 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
-      - name: Mostrar SHA-1 do debug keystore
+      - name: Gerar debug keystore e mostrar SHA-1
         run: |
+          mkdir -p ~/.android
+          keytool -genkeypair -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 \
+            -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
           keytool -list -v \
             -keystore ~/.android/debug.keystore \
             -alias androiddebugkey \
