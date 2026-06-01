@@ -59,14 +59,39 @@ jobs:
 
       - name: Configurar google-services no build.gradle
         run: |
-          # Adiciona classpath no build.gradle raiz
-          sed -i "s|classpath 'com.android.tools.build:gradle|classpath 'com.google.gms:google-services:4.4.0'\n        classpath 'com.android.tools.build:gradle|" android/build.gradle
+          cat > android/build.gradle << 'EOF'
+          buildscript {
+              ext.kotlin_version = '1.7.10'
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.3.0'
+                  classpath 'com.google.gms:google-services:4.4.0'
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.buildDir = '../build'
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+          subprojects {
+              project.evaluationDependsOn(':app')
+          }
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
           # Adiciona plugin no app/build.gradle
           echo "" >> android/app/build.gradle
           echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
-          # Mostra resultado para verificar
-          echo "=== android/build.gradle ==="
-          cat android/build.gradle
 
       - name: Criar google-services.json
         run: |
