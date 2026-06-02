@@ -10,12 +10,13 @@ class DriveService {
   factory DriveService() => _instance;
   DriveService._internal();
 
-  static const _fileName   = 'carteira.db';
-  static const _mimeType   = 'application/x-sqlite3';
-  static const _folderName = 'GestorFinanceiro';
+  static const _fileName  = 'carteira.db';
+  static const _mimeType  = 'application/x-sqlite3';
+
+  // ID fixo da pasta compartilhada do dono
+  static const _pastaCompartilhadaId = '1cz9LygQEFTfYdle09HWJ-OrYvDs0QJr3';
 
   String? _fileId;
-  String? _folderId;
 
   bool get isConnected => AuthService().isSignedIn;
 
@@ -29,13 +30,13 @@ class DriveService {
     return p.join(dir.path, _fileName);
   }
 
-  // ── Inicializa pasta e arquivo no Drive ──────────────────────
+  // ── Inicializa — busca o carteira.db na pasta compartilhada ──
   Future<bool> inicializar() async {
     try {
       final api = await _api();
       if (api == null) return false;
-      _folderId = await _buscarOuCriarPasta(api);
-      _fileId   = await _buscarArquivo(api);
+      _fileId = await _buscarArquivo(api);
+      debugPrint('DriveService inicializado. fileId: $_fileId');
       return true;
     } catch (e) {
       debugPrint('DriveService.inicializar: $e');
@@ -43,27 +44,13 @@ class DriveService {
     }
   }
 
-  Future<String> _buscarOuCriarPasta(drive.DriveApi api) async {
-    final res = await api.files.list(
-      q: "name='$_folderName' and "
-         "mimeType='application/vnd.google-apps.folder' and "
-         "trashed=false",
-      spaces: 'drive', $fields: 'files(id)',
-    );
-    if (res.files != null && res.files!.isNotEmpty) {
-      return res.files!.first.id!;
-    }
-    final pasta = drive.File()
-      ..name     = _folderName
-      ..mimeType = 'application/vnd.google-apps.folder';
-    final criada = await api.files.create(pasta);
-    return criada.id!;
-  }
-
   Future<String?> _buscarArquivo(drive.DriveApi api) async {
     final res = await api.files.list(
-      q: "name='$_fileName' and '$_folderId' in parents and trashed=false",
-      spaces: 'drive', $fields: 'files(id)',
+      q: "name='$_fileName' and "
+         "'$_pastaCompartilhadaId' in parents and "
+         "trashed=false",
+      spaces: 'drive',
+      $fields: 'files(id)',
     );
     if (res.files != null && res.files!.isNotEmpty) {
       return res.files!.first.id;
@@ -71,9 +58,12 @@ class DriveService {
     return null;
   }
 
-  // ── Download: Drive → local ──────────────────────────────────
+  // ── Download: pasta compartilhada → local ────────────────────
   Future<bool> download() async {
-    if (_fileId == null) return false;
+    if (_fileId == null) {
+      debugPrint('Nenhum arquivo encontrado na pasta compartilhada.');
+      return false;
+    }
     try {
       final api = await _api();
       if (api == null) return false;
@@ -92,7 +82,7 @@ class DriveService {
     }
   }
 
-  // ── Upload: local → Drive ────────────────────────────────────
+  // ── Upload: local → pasta compartilhada ──────────────────────
   Future<bool> upload() async {
     try {
       final api    = await _api();
@@ -103,16 +93,18 @@ class DriveService {
       final media  = drive.Media(
         Stream.value(bytes), bytes.length, contentType: _mimeType);
       if (_fileId == null) {
+        // Cria o arquivo na pasta compartilhada
         final meta = drive.File()
           ..name    = _fileName
-          ..parents = [_folderId!];
+          ..parents = [_pastaCompartilhadaId];
         final criado = await api.files.create(meta, uploadMedia: media);
         _fileId = criado.id;
-        debugPrint('Criado no Drive: $_fileId');
+        debugPrint('Criado na pasta compartilhada: $_fileId');
       } else {
+        // Atualiza o arquivo existente
         await api.files.update(
             drive.File(), _fileId!, uploadMedia: media);
-        debugPrint('Atualizado no Drive: $_fileId');
+        debugPrint('Atualizado na pasta compartilhada: $_fileId');
       }
       return true;
     } catch (e) {
@@ -122,5 +114,5 @@ class DriveService {
   }
 
   String get linkPasta =>
-      'https://drive.google.com/drive/folders/$_folderId';
+      'https://drive.google.com/drive/folders/$_pastaCompartilhadaId';
 }
