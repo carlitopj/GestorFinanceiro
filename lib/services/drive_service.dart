@@ -1,7 +1,7 @@
-
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:path_provider/path_provider.dart';
@@ -38,15 +38,11 @@ class DriveService {
   // ── API com conta de serviço (para upload) ───────────────────
   Future<drive.DriveApi?> _serviceApi() async {
     try {
-      final jsonStr = _serviceAccountJson.isNotEmpty
-          ? _serviceAccountJson
-          : Platform.environment['SERVICE_ACCOUNT_JSON'] ?? '';
-
-      if (jsonStr.isEmpty) {
-        debugPrint('SERVICE_ACCOUNT_JSON não configurado');
+      final jsonStr = await rootBundle.loadString('assets/service_account.json');
+      if (jsonStr.trim().isEmpty) {
+        debugPrint('service_account.json vazio');
         return null;
       }
-
       final credentials = ServiceAccountCredentials.fromJson(
           json.decode(jsonStr));
       final client = await clientViaServiceAccount(
@@ -110,3 +106,4 @@ class DriveService {
 
   String get linkPasta =>
       'https://drive.google.com/drive/folders/$_pastaId';
+}
