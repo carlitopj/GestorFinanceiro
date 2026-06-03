@@ -149,9 +149,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ? 'Outros' : _categorias.first;
     setState(() => _salvando = false);
     await _carregarSaldo();
-    _snack(_auth.isSignedIn
-        ? 'Salvo e enviado ao Drive!'
-        : 'Lançamento salvo!');
+
+    if (_auth.isSignedIn) {
+      final uploadOk = await _drive.upload();
+      _snack(uploadOk
+          ? 'Salvo e enviado ao Drive! ✅'
+          : 'Salvo localmente. Falha no Drive ❌');
+    } else {
+      _snack('Lançamento salvo localmente!');
+    }
   }
 
   void _preencherEdicao(Transacao t) {
