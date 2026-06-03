@@ -123,12 +123,14 @@ jobs:
       - name: Analisar código Dart
         run: flutter analyze --no-fatal-infos || true
 
-      - name: Build APK Debug
+      - name: Criar service account json para o app
         env:
-          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          SERVICE_ACCOUNT: ${{ secrets.SERVICE_ACCOUNT_JSON }}
         run: |
-          flutter build apk --debug \
-            --dart-define=SERVICE_ACCOUNT_JSON="$SERVICE_ACCOUNT_JSON"
+          echo "$SERVICE_ACCOUNT" > assets/service_account.json
+
+      - name: Build APK Debug
+        run: flutter build apk --debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
