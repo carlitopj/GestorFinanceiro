@@ -13,10 +13,11 @@ class DriveService {
   static const _fileName  = 'carteira.db';
   static const _mimeType  = 'application/x-sqlite3';
 
-  // ID fixo da pasta compartilhada do dono
-  static const _pastaCompartilhadaId = '1cz9LygQEFTfYdle09HWJ-OrYvDs0QJr3';
+  // ID fixo do arquivo carteira.db — todos usam esse mesmo arquivo
+  static const _fileIdFixo = '1KK_irgegsSfXtuknfRPZI3YA5fwDrao6';
 
-  String? _fileId;
+  // ID fixo da pasta compartilhada
+  static const _pastaId = '1cz9LygQEFTfYdle09HWJ-OrYvDs0QJr3';
 
   bool get isConnected => AuthService().isSignedIn;
 
@@ -30,45 +31,21 @@ class DriveService {
     return p.join(dir.path, _fileName);
   }
 
-  // ── Inicializa — busca o carteira.db na pasta compartilhada ──
+  // Inicialização simples — o ID já é fixo, não precisa buscar
   Future<bool> inicializar() async {
-    try {
-      final api = await _api();
-      if (api == null) return false;
-      _fileId = await _buscarArquivo(api);
-      debugPrint('DriveService inicializado. fileId: $_fileId');
-      return true;
-    } catch (e) {
-      debugPrint('DriveService.inicializar: $e');
-      return false;
-    }
+    final api = await _api();
+    if (api == null) return false;
+    debugPrint('DriveService inicializado. fileId fixo: $_fileIdFixo');
+    return true;
   }
 
-  Future<String?> _buscarArquivo(drive.DriveApi api) async {
-    final res = await api.files.list(
-      q: "name='$_fileName' and "
-         "'$_pastaCompartilhadaId' in parents and "
-         "trashed=false",
-      spaces: 'drive',
-      $fields: 'files(id)',
-    );
-    if (res.files != null && res.files!.isNotEmpty) {
-      return res.files!.first.id;
-    }
-    return null;
-  }
-
-  // ── Download: pasta compartilhada → local ────────────────────
+  // ── Download: arquivo fixo → local ───────────────────────────
   Future<bool> download() async {
-    if (_fileId == null) {
-      debugPrint('Nenhum arquivo encontrado na pasta compartilhada.');
-      return false;
-    }
     try {
       final api = await _api();
       if (api == null) return false;
       final media = await api.files.get(
-        _fileId!,
+        _fileIdFixo,
         downloadOptions: drive.DownloadOptions.fullMedia,
       ) as drive.Media;
       final bytes = <int>[];
@@ -82,7 +59,7 @@ class DriveService {
     }
   }
 
-  // ── Upload: local → pasta compartilhada ──────────────────────
+  // ── Upload: local → mesmo arquivo fixo no Drive ───────────────
   Future<bool> upload() async {
     try {
       final api    = await _api();
@@ -92,20 +69,11 @@ class DriveService {
       final bytes  = await arquivo.readAsBytes();
       final media  = drive.Media(
         Stream.value(bytes), bytes.length, contentType: _mimeType);
-      if (_fileId == null) {
-        // Cria o arquivo na pasta compartilhada
-        final meta = drive.File()
-          ..name    = _fileName
-          ..parents = [_pastaCompartilhadaId];
-        final criado = await api.files.create(meta, uploadMedia: media);
-        _fileId = criado.id;
-        debugPrint('Criado na pasta compartilhada: $_fileId');
-      } else {
-        // Atualiza o arquivo existente
-        await api.files.update(
-            drive.File(), _fileId!, uploadMedia: media);
-        debugPrint('Atualizado na pasta compartilhada: $_fileId');
-      }
+
+      // Sempre atualiza o arquivo fixo — nunca cria um novo
+      await api.files.update(
+          drive.File(), _fileIdFixo, uploadMedia: media);
+      debugPrint('Atualizado arquivo fixo: $_fileIdFixo');
       return true;
     } catch (e) {
       debugPrint('DriveService.upload: $e');
@@ -114,5 +82,5 @@ class DriveService {
   }
 
   String get linkPasta =>
-      'https://drive.google.com/drive/folders/$_pastaCompartilhadaId';
+      'https://drive.google.com/drive/folders/$_pastaId';
 }
