@@ -112,13 +112,25 @@ jobs:
         env:
           GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          echo "$GOOGLE_SERVICES" > android/app/google-services.json
+          if [ -n "$GOOGLE_SERVICES" ]; then
+            echo "$GOOGLE_SERVICES" > android/app/google-services.json
+            echo "google-services.json criado!"
+            head -5 android/app/google-services.json
+          else
+            echo "Secret não configurado, removendo plugin google-services..."
+            sed -i '/com.google.gms.google-services/d' android/app/build.gradle
+            sed -i '/com.google.gms:google-services/d' android/build.gradle
+          fi
 
       - name: Analisar código Dart
         run: flutter analyze --no-fatal-infos || true
 
       - name: Build APK Debug
-        run: flutter build apk --debug
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: |
+          flutter build apk --debug \
+            --dart-define=SERVICE_ACCOUNT_JSON="$SERVICE_ACCOUNT_JSON"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
