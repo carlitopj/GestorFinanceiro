@@ -39,8 +39,10 @@ class DriveService {
   Future<drive.DriveApi?> _serviceApi() async {
     try {
       final jsonStr = await rootBundle.loadString('assets/service_account.json');
-      if (jsonStr.trim().isEmpty) {
-        debugPrint('service_account.json vazio');
+      debugPrint('service_account.json tamanho: ${jsonStr.length}');
+      debugPrint('service_account.json inicio: ${jsonStr.substring(0, jsonStr.length > 50 ? 50 : jsonStr.length)}');
+      if (jsonStr.trim().isEmpty || jsonStr.trim() == '{}') {
+        debugPrint('service_account.json vazio ou inválido');
         return null;
       }
       final credentials = ServiceAccountCredentials.fromJson(
