@@ -120,9 +120,6 @@ jobs:
             sed -i '/com.google.gms:google-services/d' android/build.gradle
           fi
 
-      - name: Analisar código Dart
-        run: flutter analyze --no-fatal-infos || true
-
       - name: Criar service account json para o app
         env:
           SERVICE_ACCOUNT: ${{ secrets.SERVICE_ACCOUNT_JSON }}
@@ -130,6 +127,9 @@ jobs:
           mkdir -p assets
           echo "$SERVICE_ACCOUNT" > assets/service_account.json
           echo "Tamanho do arquivo: $(wc -c < assets/service_account.json) bytes"
+
+      - name: Analisar código Dart
+        run: flutter analyze --no-fatal-infos || true
 
       - name: Build APK Debug
         run: flutter build apk --debug
