@@ -108,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _enviarParaDrive() async {
     if (!_auth.isSignedIn) { _loginDrive(); return; }
     if (!_drive.isProprietario) {
-      _snack('Apenas o proprietário pode enviar para o Drive.', erro: true);
+      _snack('Sem permissão para enviar ao Drive.', erro: true);
       return;
     }
     setState(() => _sincronizando = true);
@@ -163,15 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ? 'Outros' : _categorias.first;
     setState(() => _salvando = false);
     await _carregarSaldo();
-
-    if (_auth.isSignedIn) {
-      final uploadOk = await _drive.upload();
-      _snack(uploadOk
-          ? 'Salvo e enviado ao Drive! ✅'
-          : 'Salvo localmente. Falha no Drive ❌');
-    } else {
-      _snack('Lançamento salvo localmente!');
-    }
+    _snack('Lançamento salvo!');
   }
 
   void _preencherEdicao(Transacao t) {
@@ -207,9 +199,8 @@ class _HomeScreenState extends State<HomeScreen> {
           Text('Conectado como:\n${_auth.email}',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 13)),
-          const SizedBox(height: 12),
-          Text('Arquivo: carteira.db\nPasta: GestorFinanceiro',
-              textAlign: TextAlign.center,
+          const SizedBox(height: 8),
+          Text('Arquivo: carteira.db',
               style: TextStyle(fontSize: 12, color: Colors.grey[600])),
           const SizedBox(height: 8),
           InkWell(
@@ -234,8 +225,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ]),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx),
-            child: const Text('Fechar')),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Fechar'),
+        ),
         if (_auth.isSignedIn) ...[
           // Sincronizar — todos podem baixar
           ElevatedButton.icon(
@@ -243,7 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
             label: const Text('Sincronizar'),
             onPressed: () { Navigator.pop(ctx); _sincronizar(); },
           ),
-          // Enviar — só o proprietário
+          // Enviar — proprietários podem enviar
           if (_drive.isProprietario)
             ElevatedButton.icon(
               icon: const Icon(Icons.cloud_upload, size: 16),
@@ -328,7 +321,6 @@ class _HomeScreenState extends State<HomeScreen> {
       title: Text('Gestor Financeiro',
           style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
       actions: [
-        // Ícone Drive — verde se conectado, cinza se não
         _sincronizando
             ? const Padding(padding: EdgeInsets.all(14),
                 child: SizedBox(width: 20, height: 20,
