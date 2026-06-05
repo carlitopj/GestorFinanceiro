@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../models/transacao.dart';
-import '../services/auth_service.dart';
-import '../services/drive_service.dart';
 import '../services/database_service.dart';
 import 'extrato_screen.dart';
 import 'graficos_screen.dart';
@@ -16,10 +13,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _db    = DatabaseService();
-  final _auth  = AuthService();
-  final _drive = DriveService();
-  final _fmt   = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final _db  = DatabaseService();
+  final _fmt = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
   List<String> _usuarios   = [];
   List<String> _categorias = [];
@@ -28,9 +23,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final  _ano              = DateTime.now().year;
 
   double _receitas = 0, _despesas = 0, _saldo = 0;
-  bool _carregando    = true;
-  bool _salvando      = false;
-  bool _sincronizando = false;
+  bool _carregando = true;
+  bool _salvando   = false;
 
   final _descCtrl  = TextEditingController();
   final _valorCtrl = TextEditingController();
@@ -75,49 +69,83 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // ── Google Drive ─────────────────────────────────────────────
+  // ── Menu Arquivo ─────────────────────────────────────────────
 
-  Future<void> _loginDrive() async {
-    setState(() => _sincronizando = true);
-    final user = await _auth.signIn();
-    if (user == null) {
-      _snack('Login cancelado.', erro: true);
-      setState(() => _sincronizando = false);
-      return;
-    }
-    _snack('Conectado como ${_auth.email}');
-    await _drive.inicializar();
-    await _sincronizar(silencioso: true);
-    setState(() => _sincronizando = false);
-  }
-
-  Future<void> _sincronizar({bool silencioso = false}) async {
-    if (!_auth.isSignedIn) { _loginDrive(); return; }
-    setState(() => _sincronizando = true);
-    final baixou = await _drive.download();
-    if (baixou) {
-      await _db.reabrir();
+  Future<void> _menuAbrir() async {
+    final ok = await _db.abrirArquivo(context);
+    if (ok) {
       await _inicializar();
-      if (!silencioso) _snack('Dados sincronizados do Drive! ✅');
+      _snack('Arquivo aberto: ${_db.caminhoAtual?.split('/').last}');
     } else {
-      if (!silencioso) _snack('Falha ao sincronizar.', erro: true);
+      _snack('Nenhum arquivo selecionado.', erro: true);
     }
-    setState(() => _sincronizando = false);
   }
 
-  Future<void> _enviarParaDrive() async {
-    if (!_auth.isSignedIn) { _loginDrive(); return; }
-    if (!_drive.isProprietario) {
-      _snack('Sem permissão para enviar ao Drive.', erro: true);
-      return;
+  Future<void> _menuNovo() async {
+    // Confirma se quer fechar o atual
+    if (_db.arquivoAberto) {
+      final ok = await showDialog<bool>(context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Novo arquivo'),
+            content: const Text(
+                'Deseja fechar o arquivo atual e criar um novo?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancelar')),
+              ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Confirmar')),
+            ],
+          ));
+      if (ok != true) return;
     }
-    setState(() => _sincronizando = true);
-    final ok = await _drive.upload();
-    _snack(ok
-        ? 'Enviado ao Drive com sucesso! ✅'
-        : 'Falha ao enviar para o Drive.', erro: !ok);
-    setState(() => _sincronizando = false);
+    await _db.fechar();
+    final ok = await _db.novoArquivo();
+    if (ok) {
+      await _inicializar();
+      _snack('Novo arquivo criado em Downloads!');
+    }
   }
+
+  Future<void> _menuSalvar() async {
+    final ok = await _db.salvar();
+    if (ok) {
+      _snack('Arquivo salvo! ✅');
+    } else {
+      _snack('Erro ao salvar.', erro: true);
+    }
+  }
+
+  Future<void> _menuSalvarComo() async {
+    final caminho = await _db.salvarComo();
+    if (caminho != null) {
+      _snack('Salvo em: ${caminho.split('/').last} ✅');
+    } else {
+      _snack('Operação cancelada.', erro: true);
+    }
+  }
+
+  Future<void> _menuFechar() async {
+    final ok = await showDialog<bool>(context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Fechar arquivo'),
+          content: const Text(
+              'Deseja fechar o arquivo atual?\n\n'
+              'Outra pessoa poderá abrir e editar.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Fechar')),
+          ],
+        ));
+    if (ok == true) {
+      await _db.fechar();
+      await _inicializar();
+      _snack('Arquivo fechado.');
+    }
+  }
+
+  // ── Transações ───────────────────────────────────────────────
 
   Future<void> _verificarExistente(String desc) async {
     if (desc.length < 2) return;
@@ -146,13 +174,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     setState(() => _salvando = true);
     if (_idEdicao != null) {
-      await _db.atualizar(Transacao(
+      await _db.atualizarTransacao(Transacao(
         id: _idEdicao, usuario: _usuarioAtual,
         descricao: desc, valor: valor,
         tipo: _tipoSel, categoria: _catSel, mesRef: _mesRef,
       ));
     } else {
-      await _db.salvar(Transacao(
+      await _db.salvarTransacao(Transacao(
         usuario: _usuarioAtual, descricao: desc, valor: valor,
         tipo: _tipoSel, categoria: _catSel, mesRef: _mesRef,
       ));
@@ -180,88 +208,6 @@ class _HomeScreenState extends State<HomeScreen> {
       content: Text(msg),
       backgroundColor: erro ? Colors.red : Colors.green,
       behavior: SnackBarBehavior.floating,
-    ));
-  }
-
-  // ── Dialogs ──────────────────────────────────────────────────
-
-  void _dialogDrive() {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: Row(children: [
-        const Icon(Icons.cloud, color: Color(0xFF2C3E50)),
-        const SizedBox(width: 8),
-        const Text('Google Drive'),
-      ]),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (_auth.isSignedIn) ...[
-          const Icon(Icons.check_circle, color: Colors.green, size: 48),
-          const SizedBox(height: 8),
-          Text('Conectado como:\n${_auth.email}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13)),
-          const SizedBox(height: 8),
-          Text('Arquivo: carteira.db',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-          const SizedBox(height: 8),
-          InkWell(
-            onTap: () {
-              Clipboard.setData(
-                  ClipboardData(text: _drive.linkPasta));
-              Navigator.pop(ctx);
-              _snack('Link copiado!');
-            },
-            child: const Text('📋 Copiar link da pasta',
-                style: TextStyle(color: Colors.blue, fontSize: 13)),
-          ),
-        ] else ...[
-          const Icon(Icons.cloud_off, color: Colors.grey, size: 48),
-          const SizedBox(height: 8),
-          const Text(
-            'Conecte ao Google Drive para sincronizar '
-            'o carteira.db automaticamente.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13),
-          ),
-        ],
-      ]),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Fechar'),
-        ),
-        if (_auth.isSignedIn) ...[
-          // Sincronizar — todos podem baixar
-          ElevatedButton.icon(
-            icon: const Icon(Icons.cloud_download, size: 16),
-            label: const Text('Sincronizar'),
-            onPressed: () { Navigator.pop(ctx); _sincronizar(); },
-          ),
-          // Enviar — proprietários podem enviar
-          if (_drive.isProprietario)
-            ElevatedButton.icon(
-              icon: const Icon(Icons.cloud_upload, size: 16),
-              label: const Text('Enviar ao Drive'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF27AE60)),
-              onPressed: () { Navigator.pop(ctx); _enviarParaDrive(); },
-            ),
-          TextButton(
-            onPressed: () async {
-              await _auth.signOut();
-              Navigator.pop(ctx);
-              setState(() {});
-              _snack('Desconectado do Drive.');
-            },
-            child: const Text('Sair',
-                style: TextStyle(color: Colors.red)),
-          ),
-        ] else
-          ElevatedButton.icon(
-            icon: const Icon(Icons.login, size: 16),
-            label: const Text('Entrar com Google'),
-            onPressed: () { Navigator.pop(ctx); _loginDrive(); },
-          ),
-      ],
     ));
   }
 
@@ -318,22 +264,53 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: const Color(0xFFF4F6F8),
     appBar: AppBar(
-      title: Text('Gestor Financeiro',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+      title: Text(
+        _db.arquivoAberto
+            ? _db.caminhoAtual?.split('/').last ?? 'Gestor Financeiro'
+            : 'Gestor Financeiro',
+        style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
       actions: [
-        _sincronizando
-            ? const Padding(padding: EdgeInsets.all(14),
-                child: SizedBox(width: 20, height: 20,
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2)))
-            : IconButton(
-                icon: Icon(Icons.cloud,
-                    color: _auth.isSignedIn
-                        ? Colors.greenAccent : Colors.white54),
-                tooltip: _auth.isSignedIn
-                    ? 'Drive conectado' : 'Conectar ao Drive',
-                onPressed: _dialogDrive,
-              ),
+        // Menu Arquivo
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.folder_open),
+          tooltip: 'Arquivo',
+          onSelected: (v) async {
+            if (v == 'novo')       _menuNovo();
+            if (v == 'abrir')      _menuAbrir();
+            if (v == 'salvar')     _menuSalvar();
+            if (v == 'salvarComo') _menuSalvarComo();
+            if (v == 'fechar')     _menuFechar();
+          },
+          itemBuilder: (_) => [
+            const PopupMenuItem(value: 'novo',
+                child: Row(children: [
+                  Icon(Icons.add, size: 18), SizedBox(width: 8),
+                  Text('Novo'),
+                ])),
+            const PopupMenuItem(value: 'abrir',
+                child: Row(children: [
+                  Icon(Icons.folder_open, size: 18), SizedBox(width: 8),
+                  Text('Abrir'),
+                ])),
+            const PopupMenuItem(value: 'salvar',
+                child: Row(children: [
+                  Icon(Icons.save, size: 18), SizedBox(width: 8),
+                  Text('Salvar'),
+                ])),
+            const PopupMenuItem(value: 'salvarComo',
+                child: Row(children: [
+                  Icon(Icons.save_as, size: 18), SizedBox(width: 8),
+                  Text('Salvar como'),
+                ])),
+            const PopupMenuDivider(),
+            const PopupMenuItem(value: 'fechar',
+                child: Row(children: [
+                  Icon(Icons.close, size: 18, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text('Fechar', style: TextStyle(color: Colors.red)),
+                ])),
+          ],
+        ),
         IconButton(
           icon: const Icon(Icons.bar_chart),
           tooltip: 'Gráficos',
@@ -343,9 +320,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         PopupMenuButton<String>(
           onSelected: (v) async {
-            if (v == 'addUser') {
-              _dialogUsuario();
-            } else if (v == 'delUser') {
+            if (v == 'addUser') _dialogUsuario();
+            else if (v == 'delUser') {
               if (_usuarios.length <= 1) {
                 _snack('Não é possível excluir o único usuário.',
                     erro: true);
@@ -385,22 +361,38 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
     body: _carregando
         ? const Center(child: CircularProgressIndicator())
-        : RefreshIndicator(
-            onRefresh: () => _sincronizar(),
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              child: Column(children: [
-                _cardSaldo(),
-                const SizedBox(height: 16),
-                _seletores(),
-                const SizedBox(height: 16),
-                _formLancamento(),
-                const SizedBox(height: 12),
-                _botaoExtrato(),
-                const SizedBox(height: 24),
-              ]),
-            ),
+        : SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(children: [
+              // Banner quando nenhum arquivo está aberto
+              if (!_db.arquivoAberto)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    border: Border.all(color: Colors.orange),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.info, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(
+                      'Nenhum arquivo aberto. Use o menu 📁 para Abrir ou Novo.',
+                      style: GoogleFonts.poppins(fontSize: 12),
+                    )),
+                  ]),
+                ),
+              _cardSaldo(),
+              const SizedBox(height: 16),
+              _seletores(),
+              const SizedBox(height: 16),
+              _formLancamento(),
+              const SizedBox(height: 12),
+              _botaoExtrato(),
+              const SizedBox(height: 24),
+            ]),
           ),
   );
 
