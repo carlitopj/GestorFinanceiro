@@ -16,55 +16,61 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Instalar Flutter
+      - name: Instalar Flutter Atualizado
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          # CORREÇÃO: Usar a versão estável mais recente limpa os conflitos de SDK do pubspec
           channel: 'stable'
 
-      - name: Salvar arquivos originais
+      - name: Garantir e Validar Estrutura de Arquivos
         run: |
-          cp -r lib /tmp/lib_backup
-          cp pubspec.yaml /tmp/pubspec_backup.yaml
-          [ -d "test" ] && cp -r test /tmp/test_backup || echo "Sem testes"
+          if [ ! -f "pubspec.yaml" ]; then
+            echo "ERRO CRÍTICO: pubspec.yaml não foi encontrado na raiz do repositório!"
+            exit 1
+          fi
+          
+          mkdir -p ../projeto_backup
+          cp -r lib ../projeto_backup/lib
+          cp pubspec.yaml ../projeto_backup/pubspec.yaml
+          [ -d "test" ] && cp -r test ../projeto_backup/test || echo "Sem pasta test"
 
-      - name: Criar estrutura Android nativa para SQLite
+      - name: Criar estrutura Android nativa
         run: flutter create --platforms=android --project-name gestor_financeiro .
 
-      - name: Restaurar arquivos do projeto
+      - name: Restaurar arquivos originais do projeto
         run: |
           rm -rf lib
-          cp -r /tmp/lib_backup lib
-          cp /tmp/pubspec_backup.yaml pubspec.yaml
+          cp -r ../projeto_backup/lib lib
+          cp ../projeto_backup/pubspec.yaml pubspec.yaml
+          
           rm -rf test
-          if [ -d "/tmp/test_backup" ]; then
-            cp -r /tmp/test_backup test
+          if [ -d "../projeto_backup/test" ]; then
+            cp -r ../projeto_backup/test test
           fi
 
-      - name: Instalar dependências
+      - name: Instalar dependências do projeto
         run: flutter pub get
 
-      - name: Configurar Permissões Android (Necessário para salvar arquivos)
+      - name: Injetar permissões de Armazenamento no Android
         run: |
-          # Garante que o AndroidManifest tenha permissão de leitura/escrita se necessário
           MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
           PERMISSIONS="<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>\n    <uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>"
           sed -i "s|<manifest[^>]*>|\0\n    $PERMISSIONS|" $MANIFEST_PATH
 
-      - name: Limpar e Preparar Gradle
+      - name: Limpar cache do Gradle
         run: |
           cd android
           ./gradlew clean
 
-      - name: Build APK Debug
+      - name: Compilar APK de Depuração
         run: flutter build apk --debug --verbose
 
-      - name: Copiar APK
+      - name: Agrupar artefatos de saída
         run: |
           mkdir -p /tmp/apk_output
-          find build/app/outputs/flutter-apk/ -name "app-debug.apk" 2>/dev/null -exec cp {} /tmp/apk_output/ \;
+          find build/app/outputs/flutter-apk/ -name "app-debug.apk" -exec cp {} /tmp/apk_output/ \;
 
-      - name: Upload APK
+      - name: Upload APK para Download
         uses: actions/upload-artifact@v4
         with:
           name: gestor-financeiro-apk
