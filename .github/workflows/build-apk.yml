@@ -47,12 +47,8 @@ jobs:
       - name: Build APK Debug
         run: flutter build apk --debug 2>&1 | grep -A3 "error:" | head -50 || flutter build apk --debug
 
-      - name: Encontrar e upload APK
-        run: |
-          echo "=== Buscando APK ==="
-          find / -name "*.apk" 2>/dev/null
-          echo "=== Conteudo build/app ==="
-          ls -la build/app/outputs/ 2>/dev/null || echo "Pasta nao existe"
+      - name: Encontrar APK
+        run: find . -name "*.apk" 2>/dev/null || true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
