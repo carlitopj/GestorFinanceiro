@@ -1,7 +1,7 @@
 name: Build APK Debug
 
 on:
-  workflow_dispatch: # Apenas manual
+  workflow_dispatch:
 
 jobs:
   build:
@@ -38,98 +38,6 @@ jobs:
 
       - name: Instalar dependências
         run: flutter pub get
-
-      - name: Configurar keystore
-        run: |
-          mkdir -p ~/.android
-          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
-            echo "Usando keystore existente..."
-            echo '${{ secrets.KEYSTORE_BASE64 }}' | base64 --decode > ~/.android/debug.keystore
-          else
-            echo "Gerando novo keystore fixo..."
-            keytool -genkeypair -v \
-              -keystore ~/.android/debug.keystore \
-              -alias androiddebugkey \
-              -keyalg RSA -keysize 2048 \
-              -validity 10000 \
-              -storepass android -keypass android \
-              -dname "CN=Android Debug,O=Android,C=US"
-            echo ""
-            echo "=============================="
-            echo "KEYSTORE_BASE64 (salve como Secret):"
-            echo "=============================="
-            base64 -w 0 ~/.android/debug.keystore
-            echo ""
-            echo "=============================="
-          fi
-
-      - name: Mostrar SHA-1
-        run: |
-          keytool -list -v \
-            -keystore ~/.android/debug.keystore \
-            -alias androiddebugkey \
-            -storepass android -keypass android \
-            | grep "SHA1:"
-
-      - name: Configurar google-services no build.gradle
-        run: |
-          cat > android/build.gradle << 'EOF'
-          buildscript {
-              ext.kotlin_version = '1.7.10'
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:7.3.0'
-                  classpath 'com.google.gms:google-services:4.4.0'
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-              }
-          }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.buildDir = '../build'
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(':app')
-          }
-          tasks.register("clean", Delete) {
-              delete rootProject.buildDir
-          }
-          EOF
-          echo "" >> android/app/build.gradle
-          echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
-
-      - name: Criar google-services.json
-        env:
-          GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: |
-          if [ -n "$GOOGLE_SERVICES" ]; then
-            echo "$GOOGLE_SERVICES" > android/app/google-services.json
-            echo "google-services.json criado!"
-            head -5 android/app/google-services.json
-          else
-            echo "Secret não configurado, removendo plugin google-services..."
-            sed -i '/com.google.gms.google-services/d' android/app/build.gradle
-            sed -i '/com.google.gms:google-services/d' android/build.gradle
-          fi
-
-      - name: Criar service account json para o app
-        env:
-          SERVICE_ACCOUNT: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-        run: |
-          mkdir -p assets
-          echo "$SERVICE_ACCOUNT" > assets/service_account.json
-          echo "Tamanho do arquivo: $(wc -c < assets/service_account.json) bytes"
-
-      - name: Analisar código Dart
-        run: flutter analyze --no-fatal-infos || true
 
       - name: Build APK Debug
         run: flutter build apk --debug
