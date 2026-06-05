@@ -39,6 +39,9 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
+      - name: Analisar código Dart
+        run: flutter analyze --no-fatal-infos || true
+
       - name: Build APK Debug
         run: flutter build apk --debug
 
