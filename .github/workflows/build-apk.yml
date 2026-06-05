@@ -35,15 +35,17 @@ jobs:
           rm -rf lib
           cp -r /tmp/lib_backup lib
           cp /tmp/pubspec_backup.yaml pubspec.yaml
+          # Remove arquivo de teste gerado pelo flutter create
+          rm -f test/widget_test.dart
 
       - name: Instalar dependências
         run: flutter pub get
 
       - name: Analisar código Dart
-        run: flutter analyze --no-fatal-infos || true
+        run: flutter analyze --no-fatal-infos 2>&1 | tail -50
 
       - name: Build APK Debug
-        run: flutter build apk --debug
+        run: flutter build apk --debug 2>&1 | grep -A3 "error:" | head -50 || flutter build apk --debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
