@@ -98,10 +98,24 @@ class _HomeScreenState extends State<HomeScreen> {
     if (baixou) {
       await _db.reabrir();
       await _inicializar();
-      if (!silencioso) _snack('Dados sincronizados do Drive!');
+      if (!silencioso) _snack('Dados sincronizados do Drive! ✅');
     } else {
-      if (!silencioso) _snack('Nenhum dado novo no Drive.');
+      if (!silencioso) _snack('Falha ao sincronizar.', erro: true);
     }
+    setState(() => _sincronizando = false);
+  }
+
+  Future<void> _enviarParaDrive() async {
+    if (!_auth.isSignedIn) { _loginDrive(); return; }
+    if (!_drive.isProprietario) {
+      _snack('Apenas o proprietário pode enviar para o Drive.', erro: true);
+      return;
+    }
+    setState(() => _sincronizando = true);
+    final ok = await _drive.upload();
+    _snack(ok
+        ? 'Enviado ao Drive com sucesso! ✅'
+        : 'Falha ao enviar para o Drive.', erro: !ok);
     setState(() => _sincronizando = false);
   }
 
@@ -223,11 +237,21 @@ class _HomeScreenState extends State<HomeScreen> {
         TextButton(onPressed: () => Navigator.pop(ctx),
             child: const Text('Fechar')),
         if (_auth.isSignedIn) ...[
+          // Sincronizar — todos podem baixar
           ElevatedButton.icon(
             icon: const Icon(Icons.cloud_download, size: 16),
             label: const Text('Sincronizar'),
             onPressed: () { Navigator.pop(ctx); _sincronizar(); },
           ),
+          // Enviar — só o proprietário
+          if (_drive.isProprietario)
+            ElevatedButton.icon(
+              icon: const Icon(Icons.cloud_upload, size: 16),
+              label: const Text('Enviar ao Drive'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF27AE60)),
+              onPressed: () { Navigator.pop(ctx); _enviarParaDrive(); },
+            ),
           TextButton(
             onPressed: () async {
               await _auth.signOut();
@@ -235,7 +259,8 @@ class _HomeScreenState extends State<HomeScreen> {
               setState(() {});
               _snack('Desconectado do Drive.');
             },
-            child: const Text('Sair', style: TextStyle(color: Colors.red)),
+            child: const Text('Sair',
+                style: TextStyle(color: Colors.red)),
           ),
         ] else
           ElevatedButton.icon(
