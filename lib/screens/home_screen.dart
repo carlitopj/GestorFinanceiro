@@ -81,31 +81,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _menuNovo() async {
-    // Confirma se quer fechar o atual
-    if (_db.arquivoAberto) {
-      final ok = await showDialog<bool>(context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Novo arquivo'),
-            content: const Text(
-                'Deseja fechar o arquivo atual e criar um novo?'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancelar')),
-              ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Confirmar')),
-            ],
-          ));
-      if (ok != true) return;
-    }
-    await _db.fechar();
-    final ok = await _db.novoArquivo();
-    if (ok) {
-      await _inicializar();
-      _snack('Novo arquivo criado em Downloads!');
-    }
-  }
-
   Future<void> _menuSalvar() async {
     final ok = await _db.salvar();
     if (ok) {
@@ -115,12 +90,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Copia o banco atual (com todos os dados) para a pasta Downloads
   Future<void> _menuSalvarComo() async {
     final caminho = await _db.salvarComo();
     if (caminho != null) {
-      _snack('Salvo em: ${caminho.split('/').last} ✅');
+      final nome = caminho.split('/').last;
+      _snack('Salvo em Downloads: $nome ✅');
     } else {
-      _snack('Operação cancelada.', erro: true);
+      _snack('Não foi possível salvar. Tente novamente.', erro: true);
     }
   }
 
@@ -270,23 +247,17 @@ class _HomeScreenState extends State<HomeScreen> {
             : 'Gestor Financeiro',
         style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
       actions: [
-        // Menu Arquivo
+        // Menu Arquivo — sem botão "Novo"
         PopupMenuButton<String>(
           icon: const Icon(Icons.folder_open),
           tooltip: 'Arquivo',
           onSelected: (v) async {
-            if (v == 'novo')       _menuNovo();
             if (v == 'abrir')      _menuAbrir();
             if (v == 'salvar')     _menuSalvar();
             if (v == 'salvarComo') _menuSalvarComo();
             if (v == 'fechar')     _menuFechar();
           },
           itemBuilder: (_) => [
-            const PopupMenuItem(value: 'novo',
-                child: Row(children: [
-                  Icon(Icons.add, size: 18), SizedBox(width: 8),
-                  Text('Novo'),
-                ])),
             const PopupMenuItem(value: 'abrir',
                 child: Row(children: [
                   Icon(Icons.folder_open, size: 18), SizedBox(width: 8),
@@ -300,7 +271,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const PopupMenuItem(value: 'salvarComo',
                 child: Row(children: [
                   Icon(Icons.save_as, size: 18), SizedBox(width: 8),
-                  Text('Salvar como'),
+                  Text('Salvar como (Downloads)'),
                 ])),
             const PopupMenuDivider(),
             const PopupMenuItem(value: 'fechar',
@@ -379,7 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const Icon(Icons.info, color: Colors.orange),
                     const SizedBox(width: 8),
                     Expanded(child: Text(
-                      'Nenhum arquivo aberto. Use o menu 📁 para Abrir ou Novo.',
+                      'Nenhum arquivo aberto. Use o menu 📁 para Abrir um arquivo .db existente.',
                       style: GoogleFonts.poppins(fontSize: 12),
                     )),
                   ]),
