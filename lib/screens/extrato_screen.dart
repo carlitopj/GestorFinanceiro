@@ -82,7 +82,7 @@ class _ExtratoScreenState extends State<ExtratoScreen> {
       ),
     );
     if (ok == true && t.id != null) {
-      await _db.deletar(t.id!);
+      await _db.deletarTransacao(t.id!);
       await _carregar();
       await widget.onAtualizar();
       if (mounted) {
