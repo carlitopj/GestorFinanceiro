@@ -12,7 +12,7 @@ class DatabaseService {
   DatabaseService._internal();
 
   Database? _db;
-  String? _caminhoAtual; // Caminho do arquivo aberto
+  String? _caminhoAtual;
 
   static const List<String> categoriasPadrao = [
     'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Moradia', 'Outros'
@@ -26,6 +26,16 @@ class DatabaseService {
   //  ABRIR / CRIAR / FECHAR
   // ─────────────────────────────────────────────
 
+  /// Inicializa o banco na pasta de dados do app (invisível ao usuário).
+  /// Usado apenas internamente como fallback — o usuário usa Abrir/SalvarComo.
+  Future<void> _inicializarInterno() async {
+    final dir    = await getApplicationDocumentsDirectory();
+    final caminho = p.join(dir.path, 'carteira_interna.db');
+
+    _caminhoAtual = caminho;
+    _db = await openDatabase(caminho, version: 1, onCreate: _criar);
+  }
+
   /// Abre um arquivo .db existente via seletor de arquivos
   Future<bool> abrirArquivo(BuildContext context) async {
     try {
@@ -36,9 +46,7 @@ class DatabaseService {
       if (result == null || result.files.isEmpty) return false;
 
       final caminho = result.files.single.path!;
-      if (!caminho.endsWith('.db')) {
-        return false;
-      }
+      if (!caminho.endsWith('.db')) return false;
 
       await _db?.close();
       _db = null;
@@ -51,52 +59,39 @@ class DatabaseService {
     }
   }
 
-  /// Cria um novo arquivo .db na pasta Downloads
-  Future<bool> novoArquivo() async {
-    try {
-      final dir = await getExternalStorageDirectory();
-      final downloads = Directory('/storage/emulated/0/Download');
-      final pasta = await downloads.exists() ? downloads : dir!;
-      final caminho = p.join(pasta.path, 'carteira.db');
-
-      await _db?.close();
-      _db = null;
-      _caminhoAtual = caminho;
-      _db = await openDatabase(caminho, version: 1, onCreate: _criar);
-      return true;
-    } catch (e) {
-      debugPrint('novoArquivo erro: $e');
-      return false;
-    }
-  }
-
-  /// Salva o arquivo atual em outro local via seletor
+  /// Faz o checkpoint do WAL e copia o banco para Downloads com o nome escolhido.
+  /// Retorna o caminho de destino ou null em caso de cancelamento/erro.
   Future<String?> salvarComo() async {
     try {
-      if (_caminhoAtual == null) return null;
+      if (_db == null || _caminhoAtual == null) return null;
 
-      final result = await FilePicker.platform.saveFile(
-        dialogTitle: 'Salvar carteira.db',
-        fileName: 'carteira.db',
-        type: FileType.any,
-      );
-      if (result == null) return null;
+      // 1. Força o SQLite a gravar tudo no arquivo principal (sai do modo WAL)
+      await _db!.execute('PRAGMA wal_checkpoint(TRUNCATE)');
 
-      // Copia o arquivo atual para o destino escolhido
-      final origem  = File(_caminhoAtual!);
-      await origem.copy(result);
-      return result;
+      // 2. Monta destino na pasta Downloads (sempre acessível sem permissão extra)
+      final downloads = Directory('/storage/emulated/0/Download');
+      final pastaBase = await downloads.exists()
+          ? downloads
+          : await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+
+      // Garante que o destino tenha extensão .db
+      final destino = p.join(pastaBase.path, 'carteira.db');
+
+      // 3. Copia o arquivo atual (já com dados) para o destino
+      await File(_caminhoAtual!).copy(destino);
+
+      return destino;
     } catch (e) {
       debugPrint('salvarComo erro: $e');
       return null;
     }
   }
 
-  /// Salva no caminho atual (sobrescreve)
+  /// Confirma que o banco está salvo (SQLite é transacional, sempre salva).
   Future<bool> salvar() async {
     try {
       if (_db == null || _caminhoAtual == null) return false;
-      // SQLite já salva automaticamente — apenas confirma que o arquivo existe
+      await _db!.execute('PRAGMA wal_checkpoint(TRUNCATE)');
       return await File(_caminhoAtual!).exists();
     } catch (e) {
       return false;
@@ -134,10 +129,10 @@ class DatabaseService {
     }
   }
 
+  /// Getter do banco: usa o banco já aberto ou inicializa o interno como fallback.
   Future<Database> get db async {
     if (_db != null) return _db!;
-    // Se não há arquivo aberto, cria um padrão
-    await novoArquivo();
+    await _inicializarInterno();
     return _db!;
   }
 
