@@ -1,9 +1,6 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
-import 'package:googleapis_auth/auth_io.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'auth_service.dart';
@@ -18,55 +15,37 @@ class DriveService {
   static const _fileIdFixo = '1KK_irgegsSfXtuknfRPZI3YA5fwDrao6';
   static const _pastaId    = '1cz9LygQEFTfYdle09HWJ-OrYvDs0QJr3';
 
-  // Chave da conta de serviço — injetada pelo workflow
-  static const _serviceAccountJson = String.fromEnvironment(
-      'SERVICE_ACCOUNT_JSON', defaultValue: '');
+  // E-mails que podem fazer upload
+  static const _emailsProprietarios = [
+    'carlitopj@gmail.com',
+    'nutlidis@gmail.com',
+  ];
 
   bool get isConnected => AuthService().isSignedIn;
+  bool get isProprietario =>
+      _emailsProprietarios.contains(AuthService().email);
+
+  Future<drive.DriveApi?> _api() async {
+    final client = await AuthService().getClient();
+    return client != null ? drive.DriveApi(client) : null;
+  }
 
   Future<String> get _localPath async {
     final dir = await getApplicationDocumentsDirectory();
     return p.join(dir.path, _fileName);
   }
 
-  // ── API com conta do usuário (para download) ─────────────────
-  Future<drive.DriveApi?> _userApi() async {
-    final client = await AuthService().getClient();
-    return client != null ? drive.DriveApi(client) : null;
-  }
-
-  // ── API com conta de serviço (para upload) ───────────────────
-  Future<drive.DriveApi?> _serviceApi() async {
-    try {
-      final jsonStr = await rootBundle.loadString('assets/service_account.json');
-      debugPrint('service_account.json tamanho: ${jsonStr.length}');
-      debugPrint('service_account.json inicio: ${jsonStr.substring(0, jsonStr.length > 50 ? 50 : jsonStr.length)}');
-      if (jsonStr.trim().isEmpty || jsonStr.trim() == '{}') {
-        debugPrint('service_account.json vazio ou inválido');
-        return null;
-      }
-      final credentials = ServiceAccountCredentials.fromJson(
-          json.decode(jsonStr));
-      final client = await clientViaServiceAccount(
-          credentials, [drive.DriveApi.driveFileScope]);
-      return drive.DriveApi(client);
-    } catch (e) {
-      debugPrint('_serviceApi erro: $e');
-      return null;
-    }
-  }
-
   Future<bool> inicializar() async {
-    final api = await _userApi();
+    final api = await _api();
     if (api == null) return false;
-    debugPrint('DriveService inicializado. fileId: $_fileIdFixo');
+    debugPrint('DriveService OK. Proprietário: $isProprietario');
     return true;
   }
 
-  // ── Download: usa conta do usuário ───────────────────────────
+  // ── Download: qualquer usuário pode baixar ───────────────────
   Future<bool> download() async {
     try {
-      final api = await _userApi();
+      final api = await _api();
       if (api == null) return false;
       final media = await api.files.get(
         _fileIdFixo,
@@ -83,14 +62,15 @@ class DriveService {
     }
   }
 
-  // ── Upload: usa conta de serviço ─────────────────────────────
+  // ── Upload: apenas o proprietário pode enviar ────────────────
   Future<bool> upload() async {
+    if (!isProprietario) {
+      debugPrint('Upload bloqueado: usuário não é proprietário');
+      return false;
+    }
     try {
-      final api = await _serviceApi();
-      if (api == null) {
-        debugPrint('Upload: conta de serviço não disponível');
-        return false;
-      }
+      final api = await _api();
+      if (api == null) return false;
       final arquivo = File(await _localPath);
       if (!await arquivo.exists()) return false;
       final bytes = await arquivo.readAsBytes();
@@ -98,7 +78,7 @@ class DriveService {
           Stream.value(bytes), bytes.length, contentType: _mimeType);
       await api.files.update(
           drive.File(), _fileIdFixo, uploadMedia: media);
-      debugPrint('Upload OK via conta de serviço');
+      debugPrint('Upload OK');
       return true;
     } catch (e) {
       debugPrint('Upload erro: $e');
