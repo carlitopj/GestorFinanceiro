@@ -26,30 +26,42 @@ jobs:
         run: |
           cp -r lib /tmp/lib_backup
           cp pubspec.yaml /tmp/pubspec_backup.yaml
+          # Opcional: Se tiver pasta test, faz backup também
+          [ -d "test" ] && cp -r test /tmp/test_backup || echo "Sem pasta test"
 
       - name: Criar estrutura Android
-        run: flutter create --platforms=android --project-name gestorfinanceiro .
+        # CORRIGIDO: --project-name agora usa o mesmo nome do pubspec.yaml
+        run: flutter create --platforms=android --project-name gestor_financeiro .
 
       - name: Restaurar arquivos do projeto
         run: |
           rm -rf lib
           cp -r /tmp/lib_backup lib
           cp /tmp/pubspec_backup.yaml pubspec.yaml
-          rm -f test/widget_test.dart
+          
+          # CORRIGIDO: Restaura ou limpa a pasta test de forma segura
+          rm -rf test
+          if [ -d "/tmp/test_backup" ]; then
+            cp -r /tmp/test_backup test
+          fi
 
       - name: Instalar dependências
         run: flutter pub get
 
       - name: Limpar cache Gradle
-        run: cd android && ./gradlew clean
+        run: |
+          cd android
+          ./gradlew clean
 
       - name: Build APK Debug
-        run: flutter build apk --debug --verbose 2>&1 | tail -30
+        # CORRIGIDO: Removido o tail -30 para você conseguir ver os erros se algo falhar
+        run: flutter build apk --debug --verbose
 
       - name: Copiar APK
         run: |
           mkdir -p /tmp/apk_output
-          find . -name "app-debug.apk" 2>/dev/null -exec cp {} /tmp/apk_output/ \;
+          # O Flutter build por padrão joga em build/app/outputs/flutter-apk/
+          find build/app/outputs/flutter-apk/ -name "app-debug.apk" 2>/dev/null -exec cp {} /tmp/apk_output/ \;
           ls -la /tmp/apk_output/ || echo "APK nao encontrado"
 
       - name: Upload APK
@@ -58,4 +70,4 @@ jobs:
           name: gestor-financeiro-apk
           path: /tmp/apk_output/app-debug.apk
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error
