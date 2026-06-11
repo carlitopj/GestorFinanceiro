@@ -26,14 +26,30 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython==0.29.36
 
+      - name: Preparar ambiente Android (1ª tentativa, ignora erro)
+        run: |
+          buildozer android debug || true
+
       - name: Aceitar licenças do Android SDK
         run: |
-          export ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-          curl -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q cmdline-tools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
-          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses --sdk_root="$ANDROID_SDK_ROOT" || true
+          SDK_DIR="$HOME/.buildozer/android/platform/android-sdk"
+          CMDLINE="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+          if [ -f "$CMDLINE" ]; then
+            yes | "$CMDLINE" --licenses --sdk_root="$SDK_DIR" || true
+          else
+            find "$SDK_DIR" -iname "sdkmanager" -exec sh -c 'yes | "$1" --licenses --sdk_root="'"$SDK_DIR"'" || true' _ {} \;
+          fi
+
+      - name: Build do APK (Debug)
+        run: |
+          buildozer android debug
+
+      - name: Upload do APK gerado
+        uses: actions/upload-artifact@v4
+        with:
+          name: gestor-financeiro-apk
+          path: bin/*.apk
+
 
       - name: Build do APK (Debug)
         run: |
