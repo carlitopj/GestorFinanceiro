@@ -41,15 +41,12 @@ jobs:
           echo "===== LINHAS COM ERRO ====="
           grep -n -i -E "error|traceback|failed|exception|not found|not installed|denied" build1.log | tail -n 60 || true
 
-      - name: Aceitar licenças do Android SDK
-        run: |
-          SDK_DIR="$HOME/.buildozer/android/platform/android-sdk"
-          CMDLINE="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
-          if [ -f "$CMDLINE" ]; then
-            yes | "$CMDLINE" --licenses --sdk_root="$SDK_DIR" || true
-          else
-            find "$SDK_DIR" -iname "sdkmanager" -exec sh -c 'yes | "$1" --licenses --sdk_root="'"$SDK_DIR"'" || true' _ {} \;
-          fi
+     - name: Aceitar licenças e instalar SDK
+  run: |
+    SDK_DIR="$HOME/.buildozer/android/platform/android-sdk"
+    CMDLINE="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+    yes | "$CMDLINE" --licenses --sdk_root="$SDK_DIR" || true
+    yes | "$CMDLINE" --sdk_root="$SDK_DIR" "platform-tools" "build-tools;33.0.2" "platforms;android-33"
 
       - name: Build do APK (Debug)
         run: |
