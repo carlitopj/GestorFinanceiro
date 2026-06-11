@@ -19,6 +19,7 @@ icon.filename = %(source.dir)s/icon.png
 android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
 
 android.api = 33
+android.build_tools = 33.0.2
 android.minapi = 21
 android.ndk = 25b
 android.archs = arm64-v8a, armeabi-v7a
@@ -30,3 +31,4 @@ android.add_compile_options = sourceCompatibility = JavaVersion.VERSION_1_8, tar
 [buildozer]
 log_level = 2
 warn_on_root = 1
+
